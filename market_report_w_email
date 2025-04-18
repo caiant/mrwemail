@@ -1,0 +1,249 @@
+# -*- coding: utf-8 -*-
+"""Enhanced Market Report with Email Integration"""
+
+import yfinance as yf
+import pandas as pd
+import yagmail 
+from datetime import datetime, timedelta
+import pytz
+import os
+import requests
+from bs4 import BeautifulSoup
+import re
+import imaplib
+import email
+import numpy as np
+import numpy_financial as npf
+
+# Email credentials (use environment variables in production)
+EMAIL_ADDRESS = "cailin.antonio@glccap.com"
+EMAIL_PASSWORD = "ohdu zsxf lahi mpss"
+TO_EMAILS = "lovelycailin@gmail.com"
+BCC_EMAILS = "caiantonio2427@gmail.com"
+
+tickers = {
+    "Nikkei 225": "^N225",
+    "Hang Seng": "^HSI",
+    "SSE Composite": "000001.SS",
+    "FTSE 100": "^FTSE",
+    "DAX Index": "^GDAXI",
+    "S&P 500 (prior day)": "^GSPC",
+    "Dow Jones (prior day)": "^DJI",
+    "Nasdaq Composite (prior day)": "^IXIC",
+    "USD/JPY (Yen)": "JPY=X",
+    "EUR/USD (Euro)": "EURUSD=X",
+    "GBP/USD (Pound)": "GBPUSD=X",
+    "Crude Oil (WTI)": "WTI",  
+    "S&P Futures": "ES=F",
+    "Dow Jones Futures": "YM=F", 
+    "Nasdaq Futures": "NQ=F", 
+    "Gold Futures": "GC=F",
+    "US-10 Year Bond Futures": "ZN=F"
+}
+
+# ... [Keep all your existing functions: calculate_bond_yield, get_trading_economics_yields, get_market_data] ...
+
+def fetch_recent_emails():
+    """Fetch emails from last 24 hours and return formatted HTML"""
+    try:
+        # Connect to IMAP server
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        mail.select("inbox")
+
+        # Calculate date 24 hours ago
+        since_date = (datetime.now() - timedelta(days=1)).strftime("%d-%b-%Y")
+
+        # Search for emails since yesterday
+        status, messages = mail.search(None, f'(SINCE "{since_date}")')
+        email_ids = messages[0].split()
+
+        email_html = """
+        <div style="margin-top: 40px;">
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 8px;">
+                📨 Relevant Market Emails
+            </h3>
+        """
+
+        for e_id in email_ids[:5]:  # Limit to 5 most recent emails
+            try:
+                _, msg_data = mail.fetch(e_id, "(RFC822)")
+                raw_email = msg_data[0][1]
+                msg = email.message_from_bytes(raw_email)
+
+                # Get email body
+                body = ""
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        if part.get_content_type() == "text/plain":
+                            body = part.get_payload(decode=True).decode(errors='replace')
+                            break
+                else:
+                    body = msg.get_payload(decode=True).decode(errors='replace')
+
+                # Format email entry
+                email_html += f"""
+                <div style="margin-bottom: 25px; border: 1px solid #e0e0e0; border-radius: 5px; overflow: hidden;">
+                    <div style="background-color: #f5f7fa; padding: 12px 15px; font-weight: bold; border-bottom: 1px solid #e0e0e0;">
+                        {msg['subject']}
+                    </div>
+                    <div style="padding: 15px; background-color: #fafbfc;">
+                        {body.replace('\n', '<br>')}
+                    </div>
+                </div>
+                """
+
+            except Exception as e:
+                print(f"Error processing email: {str(e)}")
+                continue
+
+        email_html += "</div>"
+        return email_html
+
+    except Exception as e:
+        print(f"IMAP error: {str(e)}")
+        return "<p>Could not load emails</p>"
+    finally:
+        if 'mail' in locals():
+            try:
+                mail.close()
+                mail.logout()
+            except:
+                pass
+
+def format_html_report(df):
+    """Generate professional HTML report with market data and emails"""
+    current_time = datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M %Z')
+    email_content = fetch_recent_emails()
+    
+    html = f"""
+    <html>
+    <head>
+        <style>
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 20px;
+            }}
+            h2 {{
+                color: #2c3e50;
+                border-bottom: 2px solid #3498db;
+                padding-bottom: 10px;
+                margin-bottom: 10px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin: 20px 0;
+                box-shadow: 0 2px 3px rgba(0,0,0,0.1);
+            }}
+            th {{
+                background-color: #3498db;
+                color: white;
+                text-align: center;
+                padding: 12px;
+                font-weight: bold;
+            }}
+            td {{
+                padding: 10px;
+                text-align: center;
+                border-bottom: 1px solid #ddd;
+            }}
+            tr:nth-child(even) {{
+                background-color: #f8f9fa;
+            }}
+            tr:hover {{
+                background-color: #e9f7fe;
+            }}
+            .positive {{
+                color: #27ae60;
+                font-weight: bold;
+            }}
+            .negative {{
+                color: #e74c3c;
+                font-weight: bold;
+            }}
+            .footer {{
+                font-size: 12px;
+                color: #7f8c8d;
+                text-align: center;
+                margin-top: 20px;
+            }}
+            .email-container {{
+                margin-top: 40px;
+                border-top: 1px solid #eee;
+                padding-top: 20px;
+            }}
+        </style>
+    </head>
+    <body>
+        <h2>📈 Daily Market Report - {current_time}</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th>Last Price</th>
+                    <th>Change</th>
+                    <th>Change %</th>
+                </tr>
+            </thead>
+            <tbody>
+    """
+    
+    for _, row in df.iterrows():
+        change_class = ""
+        try:
+            change_value = float(row['Change'].replace(',','').replace('%',''))
+            if change_value > 0:
+                change_class = "positive"
+            elif change_value < 0:
+                change_class = "negative"
+        except:
+            pass
+        
+        html += f"""
+                <tr>
+                    <td>{row['Asset']}</td>
+                    <td>{row['Last Price']}</td>
+                    <td class="{change_class}">{row['Change']}</td>
+                    <td class="{change_class}">{row['Change %']}</td>
+                </tr>
+        """
+    
+    html += f"""
+            </tbody>
+        </table>
+        
+        {email_content}
+        
+        <div class="footer">
+            <p>Data sources: Yahoo Finance | Report generated at {current_time}</p>
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+def send_email():
+    """Send formatted market report via email"""
+    try:
+        market_data = get_market_data()
+        report_html = format_html_report(market_data)
+        subject = f"Daily Market Report - {datetime.now().strftime('%Y-%m-%d')}"
+        
+        yag = yagmail.SMTP(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        yag.send(
+            to=TO_EMAILS,
+            subject=subject,
+            contents=report_html, 
+            bcc=BCC_EMAILS
+        )
+        print("✅ Email sent successfully!")
+    except Exception as e:
+        print(f"❌ Error sending email: {str(e)}")
+
+if __name__ == "__main__":
+    send_email()
