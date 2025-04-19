@@ -18,8 +18,11 @@ jobs:
       
       - name: Install Python Dependencies
         run: |
-          pip install yfinance pandas yagmail pytz requests bs4 numpy numpy_financial
+          pip install yfinance pandas yagmail pytz requests bs4 numpy numpy_financial pyzmail36
       
       - name: Run Market Report
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
           python market_report_w_email.py
