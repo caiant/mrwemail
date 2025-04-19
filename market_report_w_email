@@ -46,9 +46,9 @@ tickers = {
 def fetch_recent_emails():
     """Fetch emails from last 24 hours and return formatted HTML"""
     try:
-        # Connect to IMAP server
+ # Connect to IMAP server
         mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        mail.login(os.getenv("GMAIL_ADDRESS"), os.getenv("GMAIL_APP_PASSWORD"))
         mail.select("inbox")
 
         # Calculate date 24 hours ago
